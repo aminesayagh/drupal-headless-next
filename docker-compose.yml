@@ -1,0 +1,86 @@
+version: '3'
+
+services:
+  drupal:
+    container_name: drupal
+    image: drupal:latest
+    restart: unless-stopped
+    volumes:
+      - ./drupal:/var/www/html
+    networks:
+      - drupal_internal
+    user: "www-data:www-data"
+    environment:
+      PHP_FPM_USER: www-data
+      PHP_FPM_GROUP: www-data
+      PHP_INI_MEMORY_LIMIT: 256M
+      PHP_INI_MAX_EXECUTION_TIME: 180
+    healthcheck:
+      test: ["CMD", "php-fpm", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  
+  nginx:
+    image: nginx:mainline-alpine # latest is too old and not compatible with drupal
+    container_name: nginx
+    ports:
+      - 8001:80
+    volumes:
+      - drupal_data:/var/www/html:ro  # Read-only access
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx_logs:/var/log/nginx
+    depends_on:
+      - drupal
+    networks:
+      - drupal_internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  mysql:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD_FILE: /run/secrets/mysql_root_password
+      MYSQL_DATABASE: drupal
+      MYSQL_USER: drupal
+      MYSQL_PASSWORD_FILE: /run/secrets/mysql_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql_conf:/etc/mysql/conf.d:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - drupal_internal
+    secrets:
+      - mysql_root_password
+      - mysql_password
+
+volumes:
+  drupal_data:
+    driver: local
+  mysql_data:
+    driver: local
+
+networks:
+  drupal_internal:
+    driver: bridge
+    internal: true
+
+secrets:
+  mysql_root_password:
+    file: ./secrets/mysql_root_password.txt
+  mysql_password:
+    file: ./secrets/mysql_password.txt

@@ -1,0 +1,111 @@
+# .github/workflows/docker-test.yml
+name: Docker Compose Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Generate secrets
+        run: |
+          mkdir -p secrets
+          chmod 777 scripts/generate-secret.sh
+          ./scripts/generate-secret.sh
+          
+      - name: Check if secrets were generated
+        run: |
+          if [ ! -f "secrets/mysql_password.txt" ] || [ ! -f "secrets/mysql_root_password.txt" ]; then
+            echo "Secrets files not generated properly"
+            exit 1
+          fi
+          
+      - name: Verify secret file permissions
+        run: |
+          if [ "$(stat -c %a secrets/mysql_password.txt)" != "600" ] || \
+             [ "$(stat -c %a secrets/mysql_root_password.txt)" != "600" ]; then
+            echo "Secret files don't have correct permissions"
+            exit 1
+          fi
+
+      - name: Build containers
+        run: docker-compose build
+
+      - name: Start containers
+        run: docker-compose up -d
+
+      - name: Wait for containers to be healthy
+        run: |
+          timeout=300
+          elapsed=0
+          interval=10
+          
+          while [ $elapsed -lt $timeout ]; do
+            if docker-compose ps | grep -q "unhealthy"; then
+              echo "Unhealthy container detected"
+              docker-compose logs
+              exit 1
+            fi
+            
+            if ! docker-compose ps | grep -q "starting"; then
+              if docker-compose ps | grep -q "healthy"; then
+                echo "All containers are healthy"
+                exit 0
+              fi
+            fi
+            
+            echo "Waiting for containers to be healthy... ($elapsed/$timeout seconds)"
+            sleep $interval
+            elapsed=$((elapsed + interval))
+          done
+          
+          echo "Timeout waiting for containers to be healthy"
+          docker-compose logs
+          exit 1
+
+      - name: Test Nginx configuration
+        run: |
+          docker-compose exec -T nginx nginx -t
+          curl -f http://localhost:8081 || exit 1
+
+      - name: Check Drupal container
+        run: |
+          docker-compose exec -T drupal php -v
+          if ! docker-compose exec -T drupal php -m | grep -q "mysqli"; then
+            echo "Required PHP extensions not installed"
+            exit 1
+          fi
+
+      - name: Test MySQL connection
+        run: |
+          max_retries=30
+          counter=0
+          
+          until docker-compose exec -T mysql mysqladmin ping -h localhost --silent; do
+            counter=$((counter + 1))
+            if [ $counter -eq $max_retries ]; then
+              echo "Failed to connect to MySQL after $max_retries attempts"
+              exit 1
+            fi
+            echo "Waiting for MySQL to be ready... ($counter/$max_retries)"
+            sleep 2
+          done
+
+      - name: Check logs for errors
+        run: |
+          if docker-compose logs | grep -i "error"; then
+            echo "Found errors in container logs"
+            docker-compose logs
+            exit 1
+          fi
+
+      - name: Stop containers
+        if: always()
+        run: docker-compose down -v

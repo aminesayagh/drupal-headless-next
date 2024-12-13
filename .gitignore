@@ -1,0 +1,77 @@
+# Docker volumes and data
+/drupal
+/mysql_data
+/nginx_logs
+
+# Secrets
+/secrets/*
+!secrets/.gitkeep
+
+# Environment files
+.env
+*.env
+.env.*
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Composer files
+/vendor/
+composer.phar
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+
+# Drupal specific
+web/sites/*/settings.php
+web/sites/*/settings.local.php
+web/sites/*/files/
+web/sites/*/private/
+web/sites/*/translations/
+
+# MySQL dumps and logs
+*.sql
+*.sql.gz
+*.mysql
+mysql_conf/*.cnf
+mysql_conf/*.conf
+
+# Log files
+*.log
+/logs/
+
+# Cache files
+*.cache
+
+# System files
+.directory
+.Trash-*
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# Certificate files
+*.pem
+*.key
+*.crt
+*.cer
+*.der
+*.priv
+
+# Test coverage reports
+/coverage/
+.phpunit.result.cache
+
+# Output files
+output.md
